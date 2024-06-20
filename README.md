@@ -1,0 +1,2 @@
+# mychat
+Simple go chat
