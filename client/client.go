@@ -11,9 +11,11 @@ var portreg = regexp.MustCompile(`^[1-9][0-9]{1,3}$`)
 
 func main() {
 	pages := tview.NewPages()
-	pages.AddPage("connection", connectScreen(pages), true, true)
+	// pages.AddPage("connection", connectScreen(pages), true, true)
+	pages.AddPage("connection", connectScreen(pages), true, false)
 	pages.AddPage("bad ip", createErrorModal("Некорректный ip адрес", pages), true, false)
 	pages.AddPage("bad port", createErrorModal("Некорректный порт", pages), true, false)
+	pages.AddPage("chat", chatScreen(), true, true)
 
 	app := tview.NewApplication()
 	app.SetRoot(pages, true)
@@ -71,4 +73,34 @@ func connectScreen(pages *tview.Pages) *tview.Form {
 
 	_ = nickname
 	return form
+}
+
+func chatScreen() *tview.Grid {
+	newPrimitive := func(text string, align int) tview.Primitive {
+		prim := tview.NewTextView().
+			SetTextAlign(align).
+			SetText(text)
+		prim.SetBorderPadding(0, 0, 1, 0)
+		return prim
+	}
+	users := newPrimitive("Users", tview.AlignCenter)
+	chatLabel := newPrimitive("Chat", tview.AlignCenter)
+	usersList := newPrimitive("Aboba\nSnake123\nSoska228", tview.AlignLeft)
+	chat := newPrimitive("Aboba: Hello, everyone!\nSnake123: Hi!", tview.AlignLeft)
+	messageLabel := newPrimitive("Your message", tview.AlignCenter)
+	message := newPrimitive("Hi, guys!", tview.AlignLeft)
+
+	grid := tview.NewGrid().
+		SetRows(1, 0, 0, 1, 0).
+		SetColumns(30, 0).
+		SetBorders(true)
+
+	grid.AddItem(users, 0, 0, 1, 1, 0, 0, false).
+		AddItem(chatLabel, 0, 1, 1, 1, 0, 0, false).
+		AddItem(usersList, 1, 0, 4, 1, 0, 0, false).
+		AddItem(chat, 1, 1, 2, 1, 0, 0, false).
+		AddItem(messageLabel, 3, 1, 1, 1, 0, 0, false).
+		AddItem(message, 4, 1, 1, 1, 0, 0, false)
+
+	return grid
 }
