@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"mychat/client/screen"
@@ -91,7 +90,7 @@ func handleConnections(newConns <-chan screen.ConnectionData) {
 			continue
 		}
 
-		_, err = conn.Write([]byte("NAME:" + data.Name))
+		_, err = conn.Write([]byte("NAME" + data.Name))
 		if err != nil {
 			log.Println(err)
 			app.QueueUpdateDraw(func() {
@@ -123,14 +122,27 @@ func handleChat(conn net.Conn, chat *screen.Chat) {
 			}
 		}
 	}()
-
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		app.QueueUpdateDraw(func() {
-			chat.AddMessage(scanner.Text())
-		})
+	defer conn.Close()
+	buff := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buff)
+		if err != nil {
+			break
+		}
+		input := string(buff[:n])
+		if len(input) > 5 && input[:5] == "USERS" {
+			app.QueueUpdateDraw(func() {
+				chat.UpdateUsers(strings.Split(input[5:], ","))
+			})
+		} else if len(input) > 7 && input[:7] == "MESSAGE" {
+			app.QueueUpdateDraw(func() {
+				chat.AddMessage(input[7:])
+			})
+		} else {
+			log.Println("Strange message from server:" +
+				input)
+		}
 	}
-	conn.Close()
 	chat.Dispose()
 	app.QueueUpdateDraw(func() {
 		pages.RemovePage("chat")
