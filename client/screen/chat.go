@@ -25,6 +25,7 @@ func (c *Chat) AddMessage(msg string) {
 	writer := c.messages.BatchWriter()
 	defer writer.Close()
 	writer.Write([]byte(msg + "\n"))
+	c.messages.ScrollToEnd()
 }
 
 func (c *Chat) NewMessages() <-chan string {
