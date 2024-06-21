@@ -60,6 +60,10 @@ func broadcaster() {
 			for cli := range clients {
 				cli.ch <- res
 			}
+			go func() {
+				fmt.Println("Send to messages", newCli.name+" присоединился.")
+				messages <- newCli.name + " присоединился."
+			}()
 		case leftCli := <-leftClients:
 			delete(clients, leftCli)
 			close(leftCli.ch)
@@ -71,6 +75,9 @@ func broadcaster() {
 			for cli := range clients {
 				cli.ch <- res
 			}
+			go func() {
+				messages <- leftCli.name + " вышел."
+			}()
 		case msg := <-messages:
 			msg = "MESSAGE" + msg
 			for cli := range clients {
@@ -81,6 +88,8 @@ func broadcaster() {
 }
 
 func handleConn(conn net.Conn) {
+	msgEnd := "\xe2\x90\x9c"
+
 	fmt.Println("New connection aquired" +
 		conn.RemoteAddr().String())
 	cli := client{}
@@ -108,8 +117,8 @@ func handleConn(conn net.Conn) {
 
 	go func() {
 		for msg := range cli.ch {
-			fmt.Println("Sending message to", cli.name)
-			_, err := conn.Write([]byte(msg))
+			fmt.Println("Sending message to", cli.name, msg)
+			_, err := conn.Write([]byte(msg + msgEnd))
 			if err != nil {
 				fmt.Printf("%s (%s): %v\n",
 					conn.RemoteAddr().String(), cli.name, err)

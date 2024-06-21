@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"mychat/client/screen"
 	"net"
@@ -24,7 +25,8 @@ func main() {
 	if err == nil {
 		log.SetOutput(file)
 	} else {
-		panic(err)
+		fmt.Println("Can't set up log")
+		log.SetOutput(io.Discard)
 	}
 	log.Println("App started")
 
@@ -35,12 +37,10 @@ func main() {
 
 	pages = tview.NewPages()
 	pages.AddPage("connection", connection.View, true, true)
-	// pages.AddPage("connection", connectScreen(pages), true, false)
 	pages.AddPage("bad ip", screen.ErrorModal("Некорректный ip адрес", func() { pages.SwitchToPage("connection") }), true, false)
 	pages.AddPage("bad port", screen.ErrorModal("Некорректный порт", func() { pages.SwitchToPage("connection") }), true, false)
 	pages.AddPage("bad name", screen.ErrorModal("Некорректное имя", func() { pages.SwitchToPage("connection") }), true, false)
 	pages.AddPage("bad connection", screen.ErrorModal("Не удалось подключиться", func() { pages.SwitchToPage("connection") }), true, false)
-	// pages.AddPage("chat", chatScreen(), true, true)
 
 	connecting := tview.NewModal()
 	connecting.SetText("Подключение...")
@@ -113,6 +113,8 @@ func handleConnections(newConns <-chan screen.ConnectionData) {
 }
 
 func handleChat(conn net.Conn, chat *screen.Chat) {
+	msgEnd := "\xe2\x90\x9c"
+
 	go func() {
 		for msg := range chat.NewMessages() {
 			log.Println("New message:", msg)
@@ -130,17 +132,22 @@ func handleChat(conn net.Conn, chat *screen.Chat) {
 			break
 		}
 		input := string(buff[:n])
-		if len(input) > 5 && input[:5] == "USERS" {
-			app.QueueUpdateDraw(func() {
-				chat.UpdateUsers(strings.Split(input[5:], ","))
-			})
-		} else if len(input) > 7 && input[:7] == "MESSAGE" {
-			app.QueueUpdateDraw(func() {
-				chat.AddMessage(input[7:])
-			})
-		} else {
-			log.Println("Strange message from server:" +
-				input)
+		msgs := strings.Split(input, msgEnd)
+		fmt.Println("Got", len(msgs), "messages")
+		for _, msg := range msgs {
+			log.Println("Got message", msg)
+			if len(msg) > 5 && msg[:5] == "USERS" {
+				app.QueueUpdateDraw(func() {
+					chat.UpdateUsers(strings.Split(msg[5:], ","))
+				})
+			} else if len(msg) > 7 && msg[:7] == "MESSAGE" {
+				app.QueueUpdateDraw(func() {
+					chat.AddMessage(msg[7:])
+				})
+			} else {
+				log.Println("Strange message from server:" +
+					msg)
+			}
 		}
 	}
 	chat.Dispose()
@@ -149,36 +156,3 @@ func handleChat(conn net.Conn, chat *screen.Chat) {
 		pages.SwitchToPage("connection")
 	})
 }
-
-// func handleChat(conn net.Conn, chat *screen.Chat) {
-// 	go func() {
-// 		for msg := range chat.NewMessages {
-// 			log.Println("New message:", msg)
-// 		}
-// 	}()
-
-// 	time.Sleep(3 * time.Second)
-// 	app.QueueUpdateDraw(
-// 		func() {
-// 			chat.UpdateUsers([]string{
-// 				"Aboba",
-// 				"Snake123",
-// 			})
-// 		},
-// 	)
-// 	msgs := []string{
-// 		"Aboba: Hello!",
-// 		"Snake123: Hi!",
-// 		"Aboba: How are you?",
-// 		"Snake123: Great!",
-// 	}
-
-// 	for _, msg := range msgs {
-// 		app.QueueUpdateDraw(
-// 			func() {
-// 				chat.AddMessage(msg)
-// 			},
-// 		)
-// 		time.Sleep(2 * time.Second)
-// 	}
-// }
