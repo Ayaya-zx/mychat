@@ -1,23 +1,52 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"log"
+	"mychat/client/screen"
+	"net"
+	"os"
 	"regexp"
+	"strings"
 
 	"github.com/rivo/tview"
 )
 
-var ipreg = regexp.MustCompile(`^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4})`)
-var portreg = regexp.MustCompile(`^[1-9][0-9]{1,3}$`)
+var (
+	ipreg   = regexp.MustCompile(`^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4})`)
+	portreg = regexp.MustCompile(`^[1-9][0-9]{1,3}$`)
+	app     *tview.Application
+	pages   *tview.Pages
+)
 
 func main() {
-	pages := tview.NewPages()
-	// pages.AddPage("connection", connectScreen(pages), true, true)
-	pages.AddPage("connection", connectScreen(pages), true, false)
-	pages.AddPage("bad ip", createErrorModal("Некорректный ip адрес", pages), true, false)
-	pages.AddPage("bad port", createErrorModal("Некорректный порт", pages), true, false)
-	pages.AddPage("chat", chatScreen(), true, true)
+	file, err := os.Create("/tmp/mychat.log")
+	if err == nil {
+		log.SetOutput(file)
+	} else {
+		panic(err)
+	}
+	log.Println("App started")
 
-	app := tview.NewApplication()
+	app = tview.NewApplication()
+
+	connection := screen.NewConnection()
+	go handleConnections(connection.NewConnections)
+
+	pages = tview.NewPages()
+	pages.AddPage("connection", connection.View, true, true)
+	// pages.AddPage("connection", connectScreen(pages), true, false)
+	pages.AddPage("bad ip", screen.ErrorModal("Некорректный ip адрес", func() { pages.SwitchToPage("connection") }), true, false)
+	pages.AddPage("bad port", screen.ErrorModal("Некорректный порт", func() { pages.SwitchToPage("connection") }), true, false)
+	pages.AddPage("bad name", screen.ErrorModal("Некорректное имя", func() { pages.SwitchToPage("connection") }), true, false)
+	pages.AddPage("bad connection", screen.ErrorModal("Не удалось подключиться", func() { pages.SwitchToPage("connection") }), true, false)
+	// pages.AddPage("chat", chatScreen(), true, true)
+
+	connecting := tview.NewModal()
+	connecting.SetText("Подключение...")
+	pages.AddPage("connecting", connecting, true, false)
+
 	app.SetRoot(pages, true)
 	app.EnableMouse(true)
 
@@ -26,81 +55,118 @@ func main() {
 	}
 }
 
-func createErrorModal(msg string, pages *tview.Pages) *tview.Modal {
-	modal := tview.NewModal()
-	modal.SetText(msg)
-	modal.AddButtons([]string{"OK"})
-	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+func handleConnections(newConns <-chan screen.ConnectionData) {
+	for data := range newConns {
+		log.Println("Got new connection data!")
+		if !ipreg.Match([]byte(data.IP)) {
+			app.QueueUpdateDraw(func() {
+				pages.SwitchToPage("bad ip")
+			})
+			continue
+		}
+		if !portreg.Match([]byte(data.Port)) {
+			app.QueueUpdateDraw(func() {
+				pages.SwitchToPage("bad port")
+			})
+			continue
+		}
+		if strings.TrimSpace(data.Name) == "" {
+			app.QueueUpdateDraw(func() {
+				pages.SwitchToPage("bad name")
+			})
+			continue
+		}
+
+		app.QueueUpdateDraw(func() {
+			pages.SwitchToPage("connecting")
+		})
+
+		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s",
+			data.IP, data.Port))
+		if err != nil {
+			log.Println(err)
+			app.QueueUpdateDraw(func() {
+				pages.SwitchToPage("bad connection")
+			})
+			continue
+		}
+
+		_, err = conn.Write([]byte("NAME:" + data.Name))
+		if err != nil {
+			log.Println(err)
+			app.QueueUpdateDraw(func() {
+				pages.SwitchToPage("bad connection")
+			})
+			continue
+		}
+
+		chat := screen.NewChat()
+		go handleChat(conn, chat)
+		fmt.Println("Gonna open new chat")
+		app.QueueUpdateDraw(
+			func() {
+				log.Println("Opening new chat")
+				pages.AddPage("chat", chat.View, true, true)
+				pages.SwitchToPage("chat")
+			},
+		)
+	}
+}
+
+func handleChat(conn net.Conn, chat *screen.Chat) {
+	go func() {
+		for msg := range chat.NewMessages() {
+			log.Println("New message:", msg)
+			_, err := conn.Write([]byte(msg))
+			if err != nil {
+				log.Println(err)
+			}
+		}
+	}()
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		app.QueueUpdateDraw(func() {
+			chat.AddMessage(scanner.Text())
+		})
+	}
+	conn.Close()
+	chat.Dispose()
+	app.QueueUpdateDraw(func() {
+		pages.RemovePage("chat")
 		pages.SwitchToPage("connection")
 	})
-	return modal
 }
 
-func connectScreen(pages *tview.Pages) *tview.Form {
-	form := tview.NewForm()
-	var ip, port, nickname string
+// func handleChat(conn net.Conn, chat *screen.Chat) {
+// 	go func() {
+// 		for msg := range chat.NewMessages {
+// 			log.Println("New message:", msg)
+// 		}
+// 	}()
 
-	form.AddInputField("IP адрес", "", 20, nil,
-		func(text string) {
-			ip = text
-		},
-	)
+// 	time.Sleep(3 * time.Second)
+// 	app.QueueUpdateDraw(
+// 		func() {
+// 			chat.UpdateUsers([]string{
+// 				"Aboba",
+// 				"Snake123",
+// 			})
+// 		},
+// 	)
+// 	msgs := []string{
+// 		"Aboba: Hello!",
+// 		"Snake123: Hi!",
+// 		"Aboba: How are you?",
+// 		"Snake123: Great!",
+// 	}
 
-	form.AddInputField("Порт", "", 20, nil,
-		func(text string) {
-			port = text
-		},
-	)
-
-	form.AddInputField("Имя", "", 20, nil,
-		func(text string) {
-			nickname = text
-		},
-	)
-
-	form.AddButton("Подключиться",
-		func() {
-			if !ipreg.Match([]byte(ip)) {
-				pages.SwitchToPage("bad ip")
-				return
-			}
-			if !portreg.Match([]byte(port)) {
-				pages.SwitchToPage("bad port")
-				return
-			}
-		},
-	)
-
-	_ = nickname
-	return form
-}
-
-func chatScreen() *tview.Grid {
-	newPrimitive := func(text string, align int) tview.Primitive {
-		prim := tview.NewTextView().
-			SetTextAlign(align).
-			SetText(text)
-		prim.SetBorderPadding(0, 0, 1, 0)
-		return prim
-	}
-	users := newPrimitive("Users", tview.AlignCenter)
-	chatLabel := newPrimitive("Chat", tview.AlignCenter)
-	usersList := newPrimitive("Aboba\nSnake123\nSoska228", tview.AlignLeft)
-	chat := newPrimitive("Aboba: Hello, everyone!\nSnake123: Hi!", tview.AlignLeft)
-	messageLabel := newPrimitive("Your message", tview.AlignCenter)
-	message := newPrimitive("Hi, guys!", tview.AlignLeft)
-
-	grid := tview.NewGrid().
-		SetRows(1, 0, 0, 1, 0).
-		SetColumns(30, 0).
-		SetBorders(true)
-
-	grid.AddItem(users, 0, 0, 1, 1, 0, 0, false).
-		AddItem(chatLabel, 0, 1, 1, 1, 0, 0, false).
-		AddItem(usersList, 1, 0, 4, 1, 0, 0, false).
-		AddItem(chat, 1, 1, 2, 1, 0, 0, false).
-		AddItem(messageLabel, 3, 1, 1, 1, 0, 0, false).
-		AddItem(message, 4, 1, 1, 1, 0, 0, false)
-
-	return grid
-}
+// 	for _, msg := range msgs {
+// 		app.QueueUpdateDraw(
+// 			func() {
+// 				chat.AddMessage(msg)
+// 			},
+// 		)
+// 		time.Sleep(2 * time.Second)
+// 	}
+// }
