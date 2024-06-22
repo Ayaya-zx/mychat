@@ -5,13 +5,17 @@ import (
 	"github.com/rivo/tview"
 )
 
+// Chat представляет собой окно чата.
 type Chat struct {
+	// View - это предстваление окна чата.
 	View        *tview.Grid
 	users       *tview.TextView
 	messages    *tview.TextView
 	newMessages chan string
+	title       string
 }
 
+// UpdateUsers обновляет список пользователей.
 func (c *Chat) UpdateUsers(users []string) {
 	c.users.Clear()
 	writer := c.users.BatchWriter()
@@ -21,6 +25,8 @@ func (c *Chat) UpdateUsers(users []string) {
 	}
 }
 
+// AddMessage добавляет новое сообщение к
+// списку выводимых сообщений.
 func (c *Chat) AddMessage(msg string) {
 	writer := c.messages.BatchWriter()
 	defer writer.Close()
@@ -28,15 +34,27 @@ func (c *Chat) AddMessage(msg string) {
 	c.messages.ScrollToEnd()
 }
 
+func (c *Chat) SetMessageFieldFocus(app *tview.Application) {
+	app.SetFocus(c.messages)
+}
+
+// NewMessages возвращает канал, по которому
+// передаются сообщения, отправленный пользователем.
 func (c *Chat) NewMessages() <-chan string {
 	return c.newMessages
 }
 
+func (c *Chat) GetTitle() string {
+	return c.title
+}
+
+// Dispose очищает ресурсы чата.
 func (c *Chat) Dispose() {
 	close(c.newMessages)
 }
 
-func NewChat() *Chat {
+// NewChat возвращает новый экземпляр чата.
+func NewChat(name, title string) *Chat {
 	newPrimitive := func(text string, align int) *tview.TextView {
 		prim := tview.NewTextView().
 			SetTextAlign(align).
@@ -47,39 +65,43 @@ func NewChat() *Chat {
 
 	newMessages := make(chan string)
 
-	users := newPrimitive("Users", tview.AlignCenter)
+	userLabel := newPrimitive("Users", tview.AlignCenter)
 	chatLabel := newPrimitive("Chat", tview.AlignCenter)
 	userList := newPrimitive("", tview.AlignLeft)
 	chatField := newPrimitive("", tview.AlignLeft)
 	messageLabel := newPrimitive("Your message", tview.AlignCenter)
 
 	message := tview.NewTextArea()
+	// message := tview.NewInputField()
 	message.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
 			newMessages <- message.GetText()
 			message.SetText("", true)
+			// message.SetText("")
 			return nil
 		}
 		return event
 	})
+	message.SetLabel(name + ": ")
 
 	grid := tview.NewGrid().
-		SetRows(1, 0, 0, 1, 0).
-		SetColumns(30, 0).
+		SetRows(1, 0, 0, 0, 1, 0).
+		SetColumns(0, 25).
 		SetBorders(true)
 
-	grid.AddItem(users, 0, 0, 1, 1, 0, 0, false).
-		AddItem(userList, 1, 0, 4, 1, 0, 0, false).
-		AddItem(chatLabel, 0, 1, 1, 1, 0, 0, false).
-		AddItem(chatField, 1, 1, 2, 1, 0, 0, false).
-		AddItem(messageLabel, 3, 1, 1, 1, 0, 0, false).
-		AddItem(message, 4, 1, 1, 1, 0, 0, false)
+	grid.AddItem(userLabel, 0, 1, 1, 1, 0, 0, false).
+		AddItem(userList, 1, 1, 5, 1, 0, 0, false).
+		AddItem(chatLabel, 0, 0, 1, 1, 0, 0, false).
+		AddItem(chatField, 1, 0, 3, 1, 0, 0, true).
+		AddItem(messageLabel, 4, 0, 1, 1, 0, 0, false).
+		AddItem(message, 5, 0, 1, 1, 0, 0, false)
 
 	chat := &Chat{
 		View:        grid,
 		newMessages: newMessages,
 		users:       userList,
 		messages:    chatField,
+		title:       title,
 	}
 
 	return chat

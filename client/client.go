@@ -14,41 +14,43 @@ import (
 )
 
 var (
-	ipreg   = regexp.MustCompile(`^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4})`)
-	portreg = regexp.MustCompile(`^[1-9][0-9]{1,3}$`)
-	app     *tview.Application
-	pages   *tview.Pages
+	ipreg      = regexp.MustCompile(`^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.|$)){4})`)
+	portreg    = regexp.MustCompile(`^[1-9][0-9]{1,3}$`)
+	app        *tview.Application
+	mainScreen *screen.Main
+	conn       *screen.Connection
 )
+
+const (
+	CONN_SCREEN     = "connection"
+	CHAT_SCREEN     = "chat"
+	CONN_WAIT_MODAL = "connecting"
+	BAD_IP_MODAL    = "bad ip"
+	BAD_PORT_MODAL  = "bad port"
+	BAD_NAME_MODAL  = "bad name"
+	CONN_ERR_MODAL  = "bad connection"
+)
+
+func init() {
+	app = tview.NewApplication()
+	conn = screen.NewConnection(app)
+	mainScreen = screen.NewMain(conn)
+}
 
 func main() {
 	file, err := os.Create("/tmp/mychat.log")
 	if err == nil {
 		log.SetOutput(file)
 	} else {
-		fmt.Println("Can't set up log")
 		log.SetOutput(io.Discard)
 	}
 	log.Println("App started")
 
-	app = tview.NewApplication()
-
-	connection := screen.NewConnection()
-	go handleConnections(connection.NewConnections)
-
-	pages = tview.NewPages()
-	pages.AddPage("connection", connection.View, true, true)
-	pages.AddPage("bad ip", screen.ErrorModal("Некорректный ip адрес", func() { pages.SwitchToPage("connection") }), true, false)
-	pages.AddPage("bad port", screen.ErrorModal("Некорректный порт", func() { pages.SwitchToPage("connection") }), true, false)
-	pages.AddPage("bad name", screen.ErrorModal("Некорректное имя", func() { pages.SwitchToPage("connection") }), true, false)
-	pages.AddPage("bad connection", screen.ErrorModal("Не удалось подключиться", func() { pages.SwitchToPage("connection") }), true, false)
-
-	connecting := tview.NewModal()
-	connecting.SetText("Подключение...")
-	pages.AddPage("connecting", connecting, true, false)
-
-	app.SetRoot(pages, true)
+	// app.SetRoot(pages, true)
+	app.SetRoot(mainScreen.View, true)
 	app.EnableMouse(true)
 
+	go handleConnections(conn.NewConnections)
 	if err := app.Run(); err != nil {
 		panic(err)
 	}
@@ -58,55 +60,56 @@ func handleConnections(newConns <-chan screen.ConnectionData) {
 	for data := range newConns {
 		log.Println("Got new connection data!")
 		if !ipreg.Match([]byte(data.IP)) {
+			log.Println("Sending ERR_BAD_IP")
 			app.QueueUpdateDraw(func() {
-				pages.SwitchToPage("bad ip")
+				conn.SendResult(screen.ERR_BAD_IP)
 			})
 			continue
 		}
 		if !portreg.Match([]byte(data.Port)) {
+			log.Println("Sending ERR_BAD_PORT")
 			app.QueueUpdateDraw(func() {
-				pages.SwitchToPage("bad port")
+				conn.SendResult(screen.ERR_BAD_PORT)
 			})
 			continue
 		}
 		if strings.TrimSpace(data.Name) == "" {
+			log.Println("Sending ERR_BAD_NAME")
 			app.QueueUpdateDraw(func() {
-				pages.SwitchToPage("bad name")
+				conn.SendResult(screen.ERR_BAD_NAME)
 			})
 			continue
 		}
 
-		app.QueueUpdateDraw(func() {
-			pages.SwitchToPage("connecting")
-		})
-
-		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s",
+		c, err := net.Dial("tcp", fmt.Sprintf("%s:%s",
 			data.IP, data.Port))
 		if err != nil {
 			log.Println(err)
+			log.Println("Sending ERR_CONN")
 			app.QueueUpdateDraw(func() {
-				pages.SwitchToPage("bad connection")
+				conn.SendResult(screen.ERR_CONN)
 			})
 			continue
 		}
 
-		_, err = conn.Write([]byte("NAME" + data.Name))
+		_, err = c.Write([]byte("NAME" + data.Name))
 		if err != nil {
 			log.Println(err)
+			log.Println("Sending ERR_CONN")
 			app.QueueUpdateDraw(func() {
-				pages.SwitchToPage("bad connection")
+				conn.SendResult(screen.ERR_CONN)
 			})
 			continue
 		}
 
-		chat := screen.NewChat()
-		go handleChat(conn, chat)
-		fmt.Println("Gonna open new chat")
+		chat := screen.NewChat(data.Name, c.RemoteAddr().String())
+		go handleChat(c, chat)
 		app.QueueUpdateDraw(
 			func() {
 				log.Println("Opening new chat")
-				pages.AddPage("chat", chat.View, true, true)
-				pages.SwitchToPage("chat")
+				mainScreen.AddChat(chat)
+				chat.SetMessageFieldFocus(app)
+				conn.SendResult(screen.OK)
 			},
 		)
 	}
@@ -133,7 +136,6 @@ func handleChat(conn net.Conn, chat *screen.Chat) {
 		}
 		input := string(buff[:n])
 		msgs := strings.Split(input, msgEnd)
-		fmt.Println("Got", len(msgs), "messages")
 		for _, msg := range msgs {
 			log.Println("Got message", msg)
 			if len(msg) > 5 && msg[:5] == "USERS" {
@@ -152,7 +154,6 @@ func handleChat(conn net.Conn, chat *screen.Chat) {
 	}
 	chat.Dispose()
 	app.QueueUpdateDraw(func() {
-		pages.RemovePage("chat")
-		pages.SwitchToPage("connection")
+		mainScreen.RemoveChat(chat)
 	})
 }

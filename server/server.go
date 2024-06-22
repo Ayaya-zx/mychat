@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"regexp"
@@ -28,7 +29,10 @@ func init() {
 }
 
 func main() {
-	listener, err := net.Listen("tcp", ":8765")
+	port := flag.String("p", "8765", "Port")
+	flag.Parse()
+
+	listener, err := net.Listen("tcp", ":"+*port)
 	if err != nil {
 		panic(err)
 	}
