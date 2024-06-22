@@ -28,16 +28,16 @@ func NewMain(conn *Connection) *Main {
 }
 
 func (m *Main) AddChat(chat *Chat) {
-	m.list.AddItem(chat.title, "", 0, func() { m.pages.SwitchToPage(chat.title) })
-	m.list.SetCurrentItem(m.list.GetItemCount() - 1)
-	m.pages.AddPage(chat.GetTitle(), chat.View, true, false)
-	m.pages.SwitchToPage(chat.GetTitle())
+	m.list.InsertItem(0, chat.Title, "", 0, func() { m.pages.SwitchToPage(chat.Key) })
+	m.list.SetCurrentItem(0)
+	m.pages.AddPage(chat.Key, chat.View, true, false)
+	m.pages.SwitchToPage(chat.Key)
 }
 
 func (m *Main) RemoveChat(chat *Chat) {
-	m.pages.RemovePage(chat.title)
+	m.pages.RemovePage(chat.Key)
 	m.list.RemoveItem(
-		m.list.FindItems(chat.title, "", false, false)[0],
+		m.list.FindItems(chat.Title, "", false, false)[0],
 	)
 	next, _ := m.list.GetItemText(0)
 	m.pages.SwitchToPage(next)

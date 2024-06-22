@@ -1,6 +1,8 @@
 package screen
 
 import (
+	"math/rand"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -12,7 +14,8 @@ type Chat struct {
 	users       *tview.TextView
 	messages    *tview.TextView
 	newMessages chan string
-	title       string
+	Title       string
+	Key         string
 }
 
 // UpdateUsers обновляет список пользователей.
@@ -42,10 +45,6 @@ func (c *Chat) SetMessageFieldFocus(app *tview.Application) {
 // передаются сообщения, отправленный пользователем.
 func (c *Chat) NewMessages() <-chan string {
 	return c.newMessages
-}
-
-func (c *Chat) GetTitle() string {
-	return c.title
 }
 
 // Dispose очищает ресурсы чата.
@@ -101,8 +100,20 @@ func NewChat(name, title string) *Chat {
 		newMessages: newMessages,
 		users:       userList,
 		messages:    chatField,
-		title:       title,
+		Title:       title,
+		Key:         generateKey(),
 	}
 
 	return chat
+}
+
+var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func generateKey() string {
+	buff := make([]byte, 20)
+	for i := 0; i < 20; i++ {
+		j := rand.Intn(52)
+		buff[i] = letters[j]
+	}
+	return string(buff)
 }

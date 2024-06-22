@@ -103,7 +103,6 @@ func handleConnections(newConns <-chan screen.ConnectionData) {
 		}
 
 		chat := screen.NewChat(data.Name, c.RemoteAddr().String())
-		go handleChat(c, chat)
 		app.QueueUpdateDraw(
 			func() {
 				log.Println("Opening new chat")
@@ -112,6 +111,7 @@ func handleConnections(newConns <-chan screen.ConnectionData) {
 				conn.SendResult(screen.OK)
 			},
 		)
+		go handleChat(c, chat)
 	}
 }
 
